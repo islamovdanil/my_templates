@@ -1,0 +1,124 @@
+---
+- name: Deploy CentOS server with HAProxy and Zabbix Agent
+  hosts: all
+  become: true
+  vars:
+    haproxy_version: latest
+    zabbix_version: 2
+    swap_size: 4G
+    cert_dir: /etc/ssl/certs
+
+  tasks:
+
+    # Установка необходимых пакетов
+    - name: Install required packages
+      yum:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - haproxy
+          - zabbix-agent2
+          - htop
+          - mc
+
+    # Настройка CPU и RAM
+    - name: Set CPU and RAM limits
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      with_items:
+        - { name: 'kernel.sched.autogroup.enabled', value: '0' }
+        - { name: 'vm.nr_hugepages', value: '16' }
+
+    # Создание и настройка swap
+    - name: Create swap file
+      command: dd if=/dev/zero of=/swapfile bs=1M count={{ swap_size | regex_replace('G', '') }}
+      when: swap_size is defined
+
+    - name: Format swap file
+      command: mkswap /swapfile
+
+    - name: Enable swap
+      command: swapon /swapfile
+
+    - name: Add swap to fstab
+      lineinfile:
+        path: /etc/fstab
+        line: '/swapfile   none    swap    sw    0   0'
+
+    # Настройка хранилища
+    - name: Create partition table
+      parted:
+        device: /dev/sda
+        number: 1
+        state: present
+        start: 1M
+        end: 400G
+        label: gpt
+
+    - name: Format disk
+      filesystem:
+        fstype: xfs
+        dev: /dev/sda1
+
+    - name: Mount disk
+      mount:
+        path: /data
+        src: /dev/sda1
+        fstype: xfs
+        state: mounted
+
+    # Настройка сертификатов
+    - name: Ensure cert directory exists
+      file:
+        path: "{{ cert_dir }}"
+        state: directory
+        mode: 0755
+
+    - name: Copy SSL certificates
+      copy:
+        src: "{{ item }}"
+        dest: "{{ cert_dir }}/"
+        mode: 0644
+      with_fileglob:
+        - files/certs/*
+
+    # Настройка HAProxy
+    - name: Configure HAProxy
+      template:
+        src: haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        mode: 0644
+
+    - name: Start and enable HAProxy
+      service:
+        name: haproxy
+        state: started
+        enabled: true
+
+    # Настройка Zabbix Agent
+    - name: Configure Zabbix Agent
+      template:
+        src: zabbix_agentd.conf.j2
+        dest: /etc/zabbix/zabbix_agentd.conf
+        mode: 0644
+
+    - name: Start and enable Zabbix Agent
+      service:
+        name: zabbix-agent2
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Restart HAProxy
+      service:
+        name: haproxy
+        state: restarted
+
+    - name: Restart Zabbix Agent
+      service:
+        name: zabbix-agent2
+        state: restarted
