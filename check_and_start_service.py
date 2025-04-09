@@ -42,3 +42,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+# chmod +x check_and_start_service.py
+# sudo ./check_and_start_service.py mysqld
