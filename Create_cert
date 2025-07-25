@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Проверка наличия ssh-keygen
+if ! command -v ssh-keygen &> /dev/null; then
+  echo "Ошибка: ssh-keygen не найден. Установите OpenSSH."
+  exit 1
+fi
+
+# Получение имени для ключа от пользователя
+read -p "Введите имя для ключа (без расширения): " key_name
+
+# Проверка, не пустое ли имя
+if [ -z "$key_name" ]; then
+  echo "Ошибка: имя ключа не может быть пустым."
+  exit 1
+fi
+
+# Создание директории .ssh, если её нет
+mkdir -p ~/.ssh
+cd ~/.ssh || exit
+
+# Генерация ключа
+echo "Генерация ключа..."
+ssh-keygen -t ed25519 -C "$key_name" -f "$key_name"
+
+# Проверка успешного создания
+if [ $? -eq 0 ]; then
+  echo "Ключ успешно создан:"
+  echo "Приватный ключ: ~/.ssh/$key_name"
+  echo "Открытый ключ: ~/.ssh/$key_name.pub"
+else
+  echo "Ошибка при создании ключа."
+  exit 1
+fi
+
+# Вывод информации о созданном ключе
+echo "Информация об открытом ключе:"
+cat "$key_name.pub"
